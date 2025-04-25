@@ -5,13 +5,16 @@ const User = require('../models/user')
 
 loginRouter.post('/', async (request, response) => {
   const { username, password } = request.body
+  //busca el usuario en la base de datos
+  const user = await User.findOne({ username})
 
-  const user = await User.findOne({ username: body.username })
+  //verifica si el usuario existe o si la contraseña es incorrecta
   const passwordCorrect = user === null
     ? false
-    : await bcrypt.compare(password, user.passwordHash)
+    : await bcrypt.compare(password, user.passwordHash) //verifica si la contraseña es correcta
 
-  if (!(user && passwordCorrect)) {
+
+  if (!(user && passwordCorrect)) {  //usuario o la contraseña es incorrecta
     return response.status(401).json({
       error: 'invalid username or password'
     })
@@ -23,7 +26,7 @@ loginRouter.post('/', async (request, response) => {
   }
   
 
-  const token = jwt.sign(userForToken, process.env.SECRET)
+  const token = jwt.sign(userForToken, process.env.SECRET) //se crea un token
 
   response
     .status(200)
