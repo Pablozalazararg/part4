@@ -4,39 +4,46 @@ const Blog = require('../models/blog')
 const User = require('../models/user')
 const middleware = require('../utils/middleware')
 
+const getTokenFrom = request => {
+  const authorization = request.get('authorization')
+  if (authorization && authorization.startsWith('Bearer ')) {
+    return authorization.replace('Bearer ', '')
+  }
+  return null
+}
 blogRouter.get('/', async (request, response) => {
   const blogs = await Blog.find({}).populate('user', { username: 1, name: 1 , id:1})
 
   response.json(blogs)
 })
 
-blogRouter.put('/:id', middleware.userExtractor, async (request, response) => {
+blogRouter.put('/:id', async (request, response, next) => {
   const body = request.body
-
-  const blog = {
+  const decodedToken = jwt.verify(getTokenFrom(request), process.env.SECRET)
+  if (!decodedToken.id) {
+    return response.status(401).json({ error: 'token invalid' })
+  }
+  const user = await User.findById(decodedToken.id)
+  const blogToBeUpdated = {
     title: body.title,
     author: body.author,
     url: body.url,
     likes: body.likes,
-    user:body.user
+    user: user._id,
+    id:body.id
   }
-  const opts = {
-    runValidators: true,
-    new: true,
-    context: 'query',
-  }
-  const updatedBlog = await Blog.findByIdAndUpdate(request.params.id, blog, opts)
-  response.json(updatedBlog)
+  const updateBlog=await Blog.findByIdAndUpdate(request.params.id, blogToBeUpdated, {new:true})
+  response.json(updateBlog)
 })
 
-blogRouter.post('/', middleware.userExtractor, async (request, response)  => {
-  
-  let user = request.user
-  if (request.user == null) {
-    user = await User.find({}).limit(1)
-    user = user[0]
-  }
+blogRouter.post('/', async (request, response)  => {
   const body = request.body
+  const decodedToken = jwt.verify(getTokenFrom(request), process.env.SECRET)
+  if (!decodedToken.id) {
+    return response.status(401).json({ error: 'token invalid' })
+  }
+  const user = await User.findById(decodedToken.id)
+  
   const blog =  new Blog (
     {
       title: body.title,
@@ -46,9 +53,7 @@ blogRouter.post('/', middleware.userExtractor, async (request, response)  => {
       user: user._id
     }
   ) 
-  if( !blog.title && !blog.url) {
-    response.status(400)
-  }
+  
   const savedBlog = await blog.save()
   user.blogs = user.blogs.concat(savedBlog._id)
   await user.save()
@@ -56,23 +61,6 @@ blogRouter.post('/', middleware.userExtractor, async (request, response)  => {
 
 })
 
-blogRouter.delete('/:id', middleware.userExtractor, async (request, response) => {
-  const user = request.user
-  const blog = await Blog.findById(request.params.id)
 
-  if (!blog) {
-    return response.status(400).json({
-      error:'blog not exists'
-    })
-  }
-  if(!request.token || (user.id.toString() !== blog.user.toString())) {
-    return response.status(400).json({
-      error:'you are not the author'
-    })
-  }
-
-  await Blog.findByIdAndDelete(request.params.id)
-  response.status(204).end()
-})
 
 module.exports = blogRouter
